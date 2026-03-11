@@ -33,66 +33,56 @@ async function uploadFile(path, dataUrl) {
     return await getDownloadURL(storageRef);
 }
 
-window.submitToTeacher = async () => {
-    const studentName = document.getElementById('studentName').value.trim();
-    if (!studentName) { alert("בְּבַקָּשָׁה כִּתְבוּ אֶת הַשֵּׁם!"); return; }
+window.submitToTeacher = () => {
 
-    const loading = document.getElementById('loading');
-    loading.style.display = 'flex';
-    loading.innerText = "⏳ שׁוֹלְחִים... נא לא לסגור";
+const studentName = document.getElementById('studentName').value.trim();
 
-    try {
-        const user = auth.currentUser || await signInAnonymously(auth);
-        const cells = document.querySelectorAll('.cell');
+if (!studentName) {
+alert("בבקשה כתבו את השם לפני ההגשה");
+return;
+}
 
-        const tasksPromises = Array.from(cells).map(async (cell, i) => {
-            const taskId = i + 1;
-            let fileUrl = null;
+const cells = document.querySelectorAll('.cell');
 
-            const img = cell.querySelector('.preview-img');
-            if (img && img.src.startsWith('data:image')) {
-                fileUrl = await uploadFile(`artifacts/${appId}/submissions/${studentName}/task_${taskId}_img`, img.src);
-            }
+const tasksData = [];
 
-            const audio = cell.querySelector('audio');
-            if (audio && audio.src.startsWith('blob:')) {
-                const response = await fetch(audio.src);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                const dataUrl = await new Promise(res => {
-                    reader.onloadend = () => res(reader.result);
-                    reader.readAsDataURL(blob);
-                });
-                fileUrl = await uploadFile(`artifacts/${appId}/submissions/${studentName}/task_${taskId}_audio`, dataUrl);
-            }
+cells.forEach(cell => {
 
-            return {
-                id: taskId,
-                completed: cell.classList.contains('completed'),
-                textInput: cell.querySelector('input[type="text"]')?.value || "",
-                fileUrl
-            };
-        });
+let textInput = "";
+let fileUrl = "";
+let audioUrl = "";
 
-        const tasksData = await Promise.all(tasksPromises);
+const input = cell.querySelector('input[type="text"]');
+if (input) textInput = input.value;
 
-        // שמירה ב־Firestore
-        const submissionRef = doc(db, 'artifacts', appId, 'public', 'data', 'submissions', studentName);
-        await setDoc(submissionRef, {
-            studentName,
-            tasks: tasksData,
-            timestamp: new Date().toISOString(),
-            userId: user.uid
-        }, { merge: true });
+const img = cell.querySelector('.preview-img');
+if (img) fileUrl = img.src;
 
-        alert("✅ ההגשה נשלחה בהצלחה!");
-    } catch (err) {
-        console.error(err);
-        alert("❌ שגיאה בהגשה, נסו שוב.");
-    } finally {
-        loading.style.display = 'none';
-    }
+const audio = cell.querySelector('audio');
+if (audio) audioUrl = audio.src;
+
+tasksData.push({
+textInput,
+fileUrl,
+audioUrl
+});
+
+});
+
+const data = {
+studentName,
+tasks: tasksData
 };
+
+const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+
+const link = window.location.origin + window.location.pathname + "?data=" + encoded;
+
+navigator.clipboard.writeText(link);
+
+alert("הקישור הועתק. שלחו אותו למורה.");
+
+}
 </script>
 
 <style>
@@ -681,6 +671,7 @@ output.style.display="block";
     </script>
 </body>
 </html>
+
 
 
 
