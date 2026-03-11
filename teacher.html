@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>לוח בקרה למורה</title>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const firebaseConfig = {
+apiKey: "AIzaSyCM9jb5ool2SVijJ_uvVz-abG4m54Kg8Ro",
+authDomain: "bardugo-a9979.firebaseapp.com",
+projectId: "bardugo-a9979",
+storageBucket: "bardugo-a9979.appspot.com",
+messagingSenderId: "638890782440",
+appId: "1:638890782440:web:eb92bbac90415aadc8235d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+async function loadSubmissions(){
+
+const list=document.getElementById("list");
+
+const querySnapshot=await getDocs(
+collection(db,"artifacts/passover-board-v2/public/data/submissions")
+);
+
+list.innerHTML="";
+
+querySnapshot.forEach((doc)=>{
+
+const d=doc.data();
+
+list.innerHTML+=`
+<div style="border:1px solid #ccc;margin:10px;padding:10px">
+<h3>${d.studentName}</h3>
+<p>${d.timestamp}</p>
+</div>
+`;
+
+});
+
+}
+
+window.onload=loadSubmissions;
+
+</script>
+</head>
+
+<body>
+
+<h1>הגשות תלמידים</h1>
+
+<div id="list">טוען...</div>
+
+</body>
+</html>
