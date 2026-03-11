@@ -1,40 +1,330 @@
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>לוח בחירה פסח אינטראקטיבי - הגשה מלאה</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>לוח בחירה פסח אינטראקטיבי - הגשה מלאה</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  const firebaseConfig = {
+<!-- Firebase SDKs -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+
+const firebaseConfig = {
     apiKey: "AIzaSyCM9jb5ool2SVijJ_uvVz-abG4m54Kg8Ro",
     authDomain: "bardugo-a9979.firebaseapp.com",
     projectId: "bardugo-a9979",
     storageBucket: "bardugo-a9979.firebasestorage.app",
     messagingSenderId: "638890782440",
     appId: "1:638890782440:web:eb92bbac90415aadc8235d"
-  };        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const storage = getStorage(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'passover-board-v2';
+};
 
-        async function uploadFile(path, dataUrl) {
-            const storageRef = ref(storage, path);
-            await uploadString(storageRef, dataUrl, 'data_url');
-            return await getDownloadURL(storageRef);
-        }
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'passover-board-v2';
+
+async function uploadFile(path, dataUrl) {
+    const storageRef = ref(storage, path);
+    await uploadString(storageRef, dataUrl, 'data_url');
+    return await getDownloadURL(storageRef);
+}
 
 window.submitToTeacher = async () => {
     const studentName = document.getElementById('studentName').value.trim();
     if (!studentName) {
         alert("בְּבַקָּשָׁה כִּתְבוּ אֶת הַשֵּׁם שֶׁלָּכֶם לִפְנֵי הַהַגָּשָׁה!");
+        return;
+    }
+
+    const loading = document.getElementById('loading');
+    loading.style.display = 'flex';
+    loading.innerText = "⏳ שׁוֹלְחִים תְּמוּנוֹת וְהַקְלָטוֹת... נָא לֹא לִסְגֹּר!";
+
+    try {
+        const user = auth.currentUser || await signInAnonymously(auth);
+        const cells = document.querySelectorAll('.cell');
+        const tasksData = [];
+
+        for (let i = 0; i < cells.length; i++) {
+            const cell = cells[i];
+            const taskId = i + 1;
+            let fileUrl = null;
+
+            const img = cell.querySelector('.preview-img');
+            if (img && img.src.startsWith('data:image')) {
+                loading.innerText = `⏳ מעלה תמונה של משימה ${taskId}...`;
+                fileUrl = await uploadFile(`artifacts/${appId}/submissions/${studentName}/task_${taskId}_img`, img.src);
+            }
+
+            const audio = cell.querySelector('audio');
+            if (audio && audio.src.startsWith('blob:')) {
+                loading.innerText = `⏳ מעלה הקלטה של משימה ${taskId}...`;
+                const response = await fetch(audio.src);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                const dataUrl = await new Promise(res => {
+                    reader.onloadend = () => res(reader.result);
+                    reader.readAsDataURL(blob);
+                });
+                fileUrl = await uploadFile(`artifacts/${appId}/submissions/${studentName}/task_${taskId}_audio`, dataUrl);
+            }
+
+            tasksData.push({
+                id: taskId,
+                completed: cell.classList.contains('completed'),
+                textInput: cell.querySelector('input[type="text"]')?.value || "",
+                fileUrl: fileUrl
+            });
+        }
+
+        const submissionRef = doc(db, 'artifacts', appId, 'public', 'data', 'submissions', studentName);
+        await setDoc(submissionRef, {
+            studentName: studentName,
+            tasks: tasksData,
+            timestamp: new Date().toISOString(),
+            userId: user.uid
+        }, { merge: true });
+
+        alert("כָּל הַכָּבוֹד! ההגשה נשלחה בהצלחה.");
+    } catch (err) {
+        console.error(err);
+        alert("חָלָה שְׁגִיאָה. בדקו חיבור לאינטרנט ונסו שוב.");
+    } finally {
+        loading.style.display = 'none';
+    }
+};
+</script>
+
+<style>
+body { font-family: 'Assistant', sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+.no-print { background: white; padding: 15px; border-radius: 50px; margin-bottom: 20px; display: flex; gap: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); position: sticky; top: 10px; z-index: 1000; }
+button { padding: 10px 20px; border-radius: 20px; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+.submit-btn { background: #27ae60; color: white; }
+#printable-area { background: white; padding: 30px; border-radius: 20px; max-width: 950px; width: 100%; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+.header { text-align: center; margin-bottom: 30px; }
+.header h1 { color: #d35400; margin: 0; font-size: 32px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+.cell { border: 2px solid #edf2f7; padding: 15px; border-radius: 18px; display: flex; flex-direction: column; min-height: 280px; position: relative; background: #fff; }
+.cell.completed { background: #f0fff4; border-color: #48bb78; }
+.cell.completed::after { content: "✔️"; position: absolute; top: 8px; left: 8px; font-size: 24px; }
+.cell-content { flex-grow: 1; font-size: 15px; line-height: 1.4; color: #333; margin-bottom: 10px; }
+.cell-mandatory { border: 4px solid #e67e22; background-color: #fffaf5; }
+.label-mandatory { position: absolute; top: -12px; right: 15px; background: #e67e22; color: white; padding: 2px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+.task-action { margin-top: auto; display: flex; flex-direction: column; gap: 6px; background: #f8fafc; padding: 10px; border-radius: 12px; }
+input[type="text"] { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 8px; font-family: inherit; }
+.preview-img { max-width: 100%; max-height: 90px; display: none; margin: 5px auto; border-radius: 8px; border: 1px solid #ddd; }
+audio { width: 100%; height: 35px; }
+#loading { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 2000; justify-content: center; align-items: center; font-size: 22px; font-weight: bold; color: #d35400; text-align: center; }
+.ai-output { font-size: 13px; color: #2b6cb0; background: #ebf8ff; padding: 8px; border-radius: 8px; display: none; margin-top: 5px; border-right: 4px solid #3182ce; }
+</style>
+</head>
+<body>
+
+<div id="loading">🚀 שׁוֹלְחִים לַמּוֹרָה... נָא לֹא לִסְגֹּר אֶת הַדַּף</div>
+
+<div class="no-print">
+    <button class="submit-btn" onclick="window.submitToTeacher()">🚀 הַגָּשָׁה לַמּוֹרָה</button>
+    <button onclick="downloadImage()" style="background: #4a5568; color: white;">📸 שְׁמִירַת תְּמוּנָה</button>
+</div>
+
+<div id="printable-area">
+    <div class="header">
+        <h1>לוּחַ בְּחִירָה לְפֶסַח - כִּתָּה א'</h1>
+        <input type="text" id="studentName" placeholder="הַשֵּׁם שֶׁלִּי..." style="width: 250px; margin-top: 15px; font-size: 20px; text-align: center; border: 2px solid #d35400; border-radius: 10px; padding: 8px;">
+    </div>
+
+    <div class="grid">
+        <!-- 1 -->
+        <div class="cell">
+            <div class="cell-content"><strong>מְחַפְּשִׂים חָמֵץ:</strong><br>כִּתְבוּ 5 מַאֲכָלִים שֶׁאָסוּר לֶאֱכֹל בְּפֶסַח, אוֹ צַלְּמוּ חָמֵץ שֶׁמְּצָאתֶם.</div>
+            <div class="task-action">
+                <input type="text" placeholder="כִּתְבוּ כָּאן...">
+                <button onclick="this.nextElementSibling.click()">📸 צִלּוּם חָמֵץ</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 2 -->
+        <div class="cell">
+            <div class="cell-content"><strong>מַה נִּשְׁתַּנָּה:</strong><br>הַקְלִיטוּ אֶת עַצְמְכֶם שָׁרִים אֶת הַבַּיִת הָרִאשׁוֹן שֶׁל הַשִּׁיר.</div>
+            <div class="task-action">
+                <button id="recBtn" onclick="toggleRecording()" style="background:#4a5568; color:white;">🎤 הַקְלָטָה</button>
+                <audio id="audioPlayback" controls style="display:none;"></audio>
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 3 -->
+        <div class="cell">
+            <div class="cell-content"><strong>סֵדֶר בַּמִּשְׁפָּט:</strong><br>סַדְּרוּ אֶת הַמִּלִּים: (בְּפֶסַח, מַצָּה, אֲנַחְנוּ, אוֹכְלִים).</div>
+            <div class="task-action">
+                <input type="text" id="sentenceInput" placeholder="הַקְלִידוּ אֶת הַמִּשְׁפָּט...">
+                <button onclick="askAI('check')" style="background:#805ad5; color:white;">✨ בְּדִיקַת AI</button>
+                <div id="ai-res-check" class="ai-output"></div>
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 4 -->
+        <div class="cell">
+            <div class="cell-content"><strong>חִידַת הַחַג:</strong><br>הַמְצִיאוּ חִידָה עַל מוּשָׂג מֵהַחַג אוֹ קַבְּלוּ חִידָה מֵהַמַּחְשֵׁב.</div>
+            <div class="task-action">
+                <button onclick="askAI('riddle')" style="background:#805ad5; color:white;">✨ קַבְּלוּ חִידָה</button>
+                <div id="ai-res-riddle" class="ai-output"></div>
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 5 -->
+        <div class="cell cell-mandatory">
+            <span class="label-mandatory">מְשִׂימַת חוֹבָה</span>
+            <div class="cell-content"><strong>קַעֲרַת הַסֵּדֶר:</strong><br>צַיְּרוּ אֶת הַקַּעֲרָה וְהַמַּאֲכָלִים שֶׁבְּתוֹכָהּ, וְצַלְּמוּ אֶת הַצִּיּוּר.</div>
+            <div class="task-action">
+                <button onclick="this.nextElementSibling.click()">📸 צִלּוּם הַצִּיּוּר</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 6 -->
+        <div class="cell">
+            <div class="cell-content"><strong>הַצַּלְמָן הַצָּעִיר:</strong><br>צַלְּמוּ חֵפֶץ מֵהַחַג שֶׁיֵּשׁ לָכֶם בַּבַּיִת וְהוֹסִיפוּ כָּאן.</div>
+            <div class="task-action">
+                <button onclick="this.nextElementSibling.click()">📸 הַעֲלָאַת תְּמוּנָה</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 7 -->
+        <div class="cell">
+            <div class="cell-content"><strong>בְּנֵי חוֹרִין:</strong><br>צַיְּרוּ אֶת עַצְמְכֶם נָחִים כְּמוֹ בְּנֵי מְלָכִים וְצַלְּמוּ אֶת הַצִּיּוּר.</div>
+            <div class="task-action">
+                <button onclick="this.nextElementSibling.click()">📸 צִלּוּם הַצִּיּוּר</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 8 -->
+        <div class="cell">
+            <div class="cell-content"><strong>עוֹזְרִים בַּבַּיִת:</strong><br>כִּתְבוּ כֵּיצַד עֲזַרְתֶּם בַּהֲכָנוֹת, אוֹ צַלְּמוּ אֶת עַצְמְכֶם עוֹזְרִים.</div>
+            <div class="task-action">
+                <input type="text" placeholder="אֵיךְ עָזַרְתִּי?">
+                <button onclick="this.nextElementSibling.click()">📸 צִלּוּם הָעֶזְרָה</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+
+        <!-- 9 -->
+        <div class="cell">
+            <div class="cell-content"><strong>מַצָּה יְצִירָתִית:</strong><br>צַיְּרוּ מַצָּה מִחֲמֵץ אוֹ מִמָּצָה עִם חוּפְשָׁה לִיצִירָה.</div>
+            <div class="task-action">
+                <button onclick="this.nextElementSibling.click()">📸 צִלּוּם הַמַּצָּה</button>
+                <input type="file" accept="image/*" style="display:none" onchange="handleImage(this)">
+                <img class="preview-img">
+                <label><input type="checkbox" onchange="toggleDone(this)"> סִיַּמְתִּי!</label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let recorder, chunks = [];
+
+function toggleDone(checkbox) {
+    checkbox.closest('.cell').classList.toggle('completed', checkbox.checked);
+}
+
+function handleImage(input) {
+    const file = input.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = input.parentElement.querySelector('.preview-img');
+            img.src = e.target.result;
+            img.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+async function toggleRecording() {
+    const btn = document.getElementById('recBtn');
+    const player = document.getElementById('audioPlayback');
+    if (!recorder || recorder.state === 'inactive') {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = new MediaRecorder(stream);
+            chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'audio/wav' });
+                player.src = URL.createObjectURL(blob);
+                player.style.display = 'block';
+            };
+            recorder.start();
+            btn.innerText = "🛑 עֲצֹר הַקְלָטָה";
+            btn.style.background = "#e53e3e";
+        } catch (e) { alert("מִיקְרוֹפוֹן לֹא זָמִין."); }
+    } else {
+        recorder.stop();
+        btn.innerText = "🎤 הַקְלָטָה מֵחָדָשׁ";
+        btn.style.background = "#4a5568";
+    }
+}
+
+function askAI(type){
+    const riddles = [
+        "אני עגולה ופריכה ובפסח אותי אוכלים. מי אני?",
+        "מחביאים אותי בליל הסדר והילדים מחפשים אותי. מי אני?",
+        "שותים אותי ארבע פעמים בליל הסדר. מה זה?",
+        "אני לחם שלא תופח ואוכלים אותי בפסח. מי אני?"
+    ];
+
+    if(type === "riddle"){
+        const output = document.getElementById("ai-res-riddle");
+        const riddle = riddles[Math.floor(Math.random()*riddles.length)];
+        output.innerText = riddle;
+        output.style.display = "block";
+        return;
+    }
+
+    if(type === "check"){
+        const inputVal = document.getElementById("sentenceInput").value.trim();
+        const output = document.getElementById("ai-res-check");
+        if(!inputVal){ alert("כתבו משפט קודם"); return; }
+        if(inputVal.includes("אוכלים") && inputVal.includes("מצה")){
+            output.innerText="נראה שהמשפט נכון 👍";
+        }else{
+            output.innerText="נסו לסדר את המילים מחדש.";
+        }
+        output.style.display="block";
+    }
+}
+
+function downloadImage() {
+    html2canvas(document.getElementById('printable-area'), { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'לוח_פסח_שלי.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+}
+</script>
+</body>
+</html>        alert("בְּבַקָּשָׁה כִּתְבוּ אֶת הַשֵּׁם שֶׁלָּכֶם לִפְנֵי הַהַגָּשָׁה!");
         return;
     }
 
@@ -395,4 +685,5 @@ output.style.display="block";
     </script>
 </body>
 </html>
+
 
